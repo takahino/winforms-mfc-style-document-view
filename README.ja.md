@@ -70,7 +70,7 @@ public class SampleDocument : MfcDocument
 
 - [docs/architecture.md](docs/architecture.md) — プロジェクト構成、MFC 対応表、各ファイルの責務（英語）
 - [docs/architecture.ja.md](docs/architecture.ja.md) — 上記と同内容（日本語）
-- [MFC/README.md](MFC/README.md) — MFC フォルダと C# サンプルの対応関係
+- [MFC/README.jp.md](MFC/README.jp.md) — MFC フォルダと C# サンプルの対応関係
 
 ## ライセンス
 
