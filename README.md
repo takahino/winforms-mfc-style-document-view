@@ -39,13 +39,21 @@ dotnet run --project DocumentView.Sample/DocumentView.Sample.csproj
 
 The sample registers services with `Microsoft.Extensions.DependencyInjection`, resolves `MfcWinApp`, and calls `Run()`.
 
+## Screenshot
+
+The sample **Employee information** window includes a debug panel that shows DDX binding state (control ↔ document fields) and an operation log for `UpdateData` / validation, similar to tracing MFC-style dialog data exchange.
+
+![Employee information sample with DDX debug panel](docs/employee-information-sample.png)
+
 ## Quick example (concept)
 
-Document fields are annotated; the framework moves values between controls and fields when you call `UpdateData`:
+`MfcDocument` requires an `IMessageBoxService` (constructor injection; the sample wires it via `Microsoft.Extensions.DependencyInjection`). Document fields are annotated; the framework moves values between controls and fields when you call `UpdateData`:
 
 ```csharp
 public class SampleDocument : MfcDocument
 {
+    public SampleDocument(IMessageBoxService messageBoxService) : base(messageBoxService) { }
+
     [DDX(SampleView.Ctrl.IDC_EDIT_NAME)]
     [DDVMaxChars(30)]
     public string m_strName = string.Empty;
@@ -56,7 +64,7 @@ public class SampleDocument : MfcDocument
 }
 ```
 
-See `DocumentView.Sample/SampleDocument.cs` and `SampleView.cs` for the full pattern (including grid and buttons).
+See `DocumentView.Sample/SampleDocument.cs`, `SampleView.cs`, and `Program.cs` for the full pattern (DI, grid, and buttons).
 
 ## Documentation
 

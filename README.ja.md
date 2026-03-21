@@ -39,13 +39,21 @@ dotnet run --project DocumentView.Sample/DocumentView.Sample.csproj
 
 サンプルは `Microsoft.Extensions.DependencyInjection` でサービスを登録し、`MfcWinApp` を解決して `Run()` します。
 
+## スクリーンショット
+
+サンプルの **Employee information** ウィンドウには、DDX のバインディング状態（コントロール ↔ ドキュメントのフィールド）や、`UpdateData` / 検証に関する操作ログを表示するデバッグパネルがあり、MFC 風ダイアログのデータ交換を追跡するイメージに近い確認ができます。
+
+![従業員情報サンプルと DDX デバッグパネル](docs/employee-information-sample.png)
+
 ## コード例（概念）
 
-ドキュメントのメンバーにアトリビュートを付け、`UpdateData` 呼び出しでコントロールとフィールドの間で値をやり取りします。
+`MfcDocument` は `IMessageBoxService` をコンストラクタで受け取ります（サンプルは `Microsoft.Extensions.DependencyInjection` で登録・注入）。ドキュメントのメンバーにアトリビュートを付け、`UpdateData` 呼び出しでコントロールとフィールドの間で値をやり取りします。
 
 ```csharp
 public class SampleDocument : MfcDocument
 {
+    public SampleDocument(IMessageBoxService messageBoxService) : base(messageBoxService) { }
+
     [DDX(SampleView.Ctrl.IDC_EDIT_NAME)]
     [DDVMaxChars(30)]
     public string m_strName = string.Empty;
@@ -56,7 +64,7 @@ public class SampleDocument : MfcDocument
 }
 ```
 
-グリッドやボタン処理を含む全体の流れは `DocumentView.Sample/SampleDocument.cs` と `SampleView.cs` を参照してください。
+グリッドやボタン処理を含む全体の流れは `DocumentView.Sample/SampleDocument.cs`、`SampleView.cs`、`Program.cs` を参照してください。
 
 ## ドキュメント
 

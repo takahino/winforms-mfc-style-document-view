@@ -68,8 +68,11 @@ public static class ControlValueConverter
                 nud.Value = Math.Clamp(d, nud.Minimum, nud.Maximum);
                 break;
             case ComboBox cmb:
-                if ((controlProperty ?? (value is int ? "SelectedIndex" : "Text")) == "SelectedIndex" && value is int si)
+                var cmbProp = controlProperty ?? (value is int ? "SelectedIndex" : "Text");
+                if (cmbProp == "SelectedIndex" && value is int si)
                     cmb.SelectedIndex = si;
+                else if (cmbProp == "SelectedItem")
+                    cmb.SelectedItem = value;
                 else
                     cmb.Text = value.ToString() ?? "";
                 break;
