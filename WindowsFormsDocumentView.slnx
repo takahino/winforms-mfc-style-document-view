@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="DocumentView.Framework/DocumentView.Framework.csproj" />
+  <Project Path="DocumentView.Sample/DocumentView.Sample.csproj" />
+  <Project Path="DocumentView.Framework.Tests/DocumentView.Framework.Tests.csproj" />
+  <Project Path="DocumentView.Sample.Tests/DocumentView.Sample.Tests.csproj" />
+</Solution>

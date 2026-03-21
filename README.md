@@ -1,0 +1,69 @@
+# Windows Forms Document–View
+
+A small framework that brings the **MFC Document–View** style to **.NET WinForms**. It replaces `DoDataExchange` / `DDX_*` / `DDV_*` with **C# attributes** on document fields, so you can keep business logic in the document class and lower the cost of porting MFC dialogs.
+
+**Languages:** [English](README.md) · [日本語](README.ja.md)
+
+## Features
+
+- **`MfcDocument`** — `AttachView`, `UpdateData(true|false)` mirroring MFC’s save/validate and load-to-UI behavior
+- **Declarative binding** — `[DDX(...)]` and `[DDV*]` attributes instead of handwritten exchange code
+- **`MfcWinApp`** — application entry similar to `CWinApp` / `InitInstance` + message loop via `Run()`
+- **`IMessageBoxService`** — abstracted `MessageBox` for tests and mocks
+- **Optional `ResourceId` + `[AutoId]`** — numbered control IDs aligned with `resource.h` style when you need them
+
+## Requirements
+
+- **Windows** (WinForms)
+- **.NET 10** (`net10.0-windows`) with Windows Forms enabled  
+- **Visual Studio 2022** (or another IDE) with the .NET 10 SDK workload
+
+## Repository layout
+
+| Path | Role |
+|------|------|
+| `DocumentView.Framework/` | Reusable framework (`MfcWinApp`, `MfcDocument`, DDX/DDV attributes, converters) |
+| `DocumentView.Sample/` | Example app (DI, sample document + form) |
+| `DocumentView.Framework.Tests/` | Framework unit tests |
+| `DocumentView.Sample.Tests/` | Sample unit tests |
+| `docs/architecture.md` | Architecture overview (English) |
+| `docs/architecture.ja.md` | Architecture overview (Japanese) |
+| `MFC/` | **Reference only** — VC++ 6.0–style MFC sketch mapped to the C# sample (not a guaranteed build) |
+
+## Build and run
+
+```bash
+dotnet build WindowsFormsDocumentView.slnx
+dotnet run --project DocumentView.Sample/DocumentView.Sample.csproj
+```
+
+The sample registers services with `Microsoft.Extensions.DependencyInjection`, resolves `MfcWinApp`, and calls `Run()`.
+
+## Quick example (concept)
+
+Document fields are annotated; the framework moves values between controls and fields when you call `UpdateData`:
+
+```csharp
+public class SampleDocument : MfcDocument
+{
+    [DDX(SampleView.Ctrl.IDC_EDIT_NAME)]
+    [DDVMaxChars(30)]
+    public string m_strName = string.Empty;
+
+    [DDX(SampleView.Ctrl.IDC_EDIT_AGE)]
+    [DDVMinMax(0, 150)]
+    public int m_nAge = 0;
+}
+```
+
+See `DocumentView.Sample/SampleDocument.cs` and `SampleView.cs` for the full pattern (including grid and buttons).
+
+## Documentation
+
+- [docs/architecture.md](docs/architecture.md) — project structure, MFC mapping table, responsibilities (English)
+- [docs/architecture.ja.md](docs/architecture.ja.md) — same content in Japanese
+- [MFC/README.md](MFC/README.md) — how the optional MFC folder relates to the C# sample
+
+## License
+
+This project is licensed under the [BSD 3-Clause License](LICENSE).
