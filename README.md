@@ -6,8 +6,9 @@ A small framework that brings the **MFC Document–View** style to **.NET WinFor
 
 ## Features
 
-- **`MfcDocument`** — `AttachView`, `UpdateData(true|false)` mirroring MFC’s save/validate and load-to-UI behavior
+- **`MfcDocument`** — `AttachView`, `UpdateData(true|false)` mirroring MFC's save/validate and load-to-UI behavior
 - **Declarative binding** — `[DDX(...)]` and `[DDV*]` attributes instead of handwritten exchange code
+- **Roslyn Source Generator** — `partial` document classes get a compile-time `BuildEntries()` override; direct field access replaces reflection in the hot path (reflection fallback for non-`partial` classes)
 - **`MfcWinApp`** — application entry similar to `CWinApp` / `InitInstance` + message loop via `Run()`
 - **`IMessageBoxService`** — abstracted `MessageBox` for tests and mocks
 - **Optional `ResourceId` + `[AutoId]`** — numbered control IDs aligned with `resource.h` style when you need them
@@ -15,7 +16,7 @@ A small framework that brings the **MFC Document–View** style to **.NET WinFor
 ## Requirements
 
 - **Windows** (WinForms)
-- **.NET 10** (`net10.0-windows`) with Windows Forms enabled  
+- **.NET 10** (`net10.0-windows`) with Windows Forms enabled
 - **Visual Studio 2022** (or another IDE) with the .NET 10 SDK workload
 
 ## Repository layout
@@ -23,6 +24,7 @@ A small framework that brings the **MFC Document–View** style to **.NET WinFor
 | Path | Role |
 |------|------|
 | `DocumentView.Framework/` | Reusable framework (`MfcWinApp`, `MfcDocument`, DDX/DDV attributes, converters) |
+| `DocumentView.Framework.Generator/` | Roslyn Incremental Source Generator — generates delegate-based `BuildEntries()` for `partial` document classes |
 | `DocumentView.Sample/` | Example app (DI, sample document + form) |
 | `DocumentView.Framework.Tests/` | Framework unit tests |
 | `DocumentView.Sample.Tests/` | Sample unit tests |
@@ -47,10 +49,12 @@ The sample **Employee information** window includes a debug panel that shows DDX
 
 ## Quick example (concept)
 
-`MfcDocument` requires an `IMessageBoxService` (constructor injection; the sample wires it via `Microsoft.Extensions.DependencyInjection`). Document fields are annotated; the framework moves values between controls and fields when you call `UpdateData`:
+`MfcDocument` requires an `IMessageBoxService` (constructor injection; the sample wires it via `Microsoft.Extensions.DependencyInjection`). Document fields are annotated; the framework moves values between controls and fields when you call `UpdateData`.
+
+Add `partial` to opt in to zero-reflection code generation by the Source Generator:
 
 ```csharp
-public class SampleDocument : MfcDocument
+public partial class SampleDocument : MfcDocument   // partial → generator produces BuildEntries()
 {
     public SampleDocument(IMessageBoxService messageBoxService) : base(messageBoxService) { }
 
@@ -63,6 +67,8 @@ public class SampleDocument : MfcDocument
     public int m_nAge = 0;
 }
 ```
+
+Omitting `partial` is safe — the reflection-based fallback in `MfcDocument.BuildEntries()` continues to work unchanged.
 
 See `DocumentView.Sample/SampleDocument.cs`, `SampleView.cs`, and `Program.cs` for the full pattern (DI, grid, and buttons).
 

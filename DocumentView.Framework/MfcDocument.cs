@@ -4,7 +4,15 @@ namespace DocumentView.Framework;
 
 public abstract class MfcDocument
 {
-    private record DdxEntry(MemberInfo Member, DDXAttribute Attribute, string ControlName);
+    protected record DdxEntry(
+        string                      MemberName,
+        Type                        MemberType,
+        string                      ControlName,
+        string?                     ControlProperty,
+        Func<object?>               Getter,
+        Action<object>              Setter,
+        IReadOnlyList<DDVAttribute> Validators
+    );
 
     private List<DdxEntry>? _ddxEntries;
     private Control? _view;
@@ -63,18 +71,18 @@ public abstract class MfcDocument
 
             if (saveAndValidate)
             {
-                var newVal = ControlValueConverter.GetValue(ctrl, GetMemberType(entry.Member), entry.Attribute.ControlProperty);
+                var newVal = ControlValueConverter.GetValue(ctrl, entry.MemberType, entry.ControlProperty);
                 if (newVal is not null)
                 {
-                    SetValue(entry.Member, newVal);
-                    Log($"  [{entry.ControlName}] → {entry.Member.Name} = {FormatValue(newVal)}");
+                    entry.Setter(newVal);
+                    Log($"  [{entry.ControlName}] → {entry.MemberName} = {FormatValue(newVal)}");
                 }
             }
             else
             {
-                var val = GetValue(entry.Member);
-                ControlValueConverter.SetValue(ctrl, val, entry.Attribute.ControlProperty);
-                Log($"  [{entry.ControlName}] ← {entry.Member.Name} = {FormatValue(val)}");
+                var val = entry.Getter();
+                ControlValueConverter.SetValue(ctrl, val, entry.ControlProperty);
+                Log($"  [{entry.ControlName}] ← {entry.MemberName} = {FormatValue(val)}");
             }
         }
 
@@ -86,9 +94,9 @@ public abstract class MfcDocument
         {
             foreach (var entry in _ddxEntries)
             {
-                foreach (var ddv in entry.Member.GetCustomAttributes<DDVAttribute>(true))
+                foreach (var ddv in entry.Validators)
                 {
-                    var val = GetValue(entry.Member);
+                    var val = entry.Getter();
                     string ddvName = ddv.GetType().Name.Replace("Attribute", "");
                     if (!ddv.Validate(val, out string msg))
                     {
@@ -146,7 +154,11 @@ public abstract class MfcDocument
             ctrl.Visible = visible;
     }
 
-    private List<DdxEntry> BuildEntries()
+    /// <summary>
+    /// Builds the DDX entry list. Override in generated partial classes to replace
+    /// reflection with compile-time direct field access for better performance.
+    /// </summary>
+    protected virtual List<DdxEntry> BuildEntries()
     {
         var list = new List<DdxEntry>();
         const BindingFlags flags =
@@ -154,12 +166,28 @@ public abstract class MfcDocument
             BindingFlags.Instance | BindingFlags.FlattenHierarchy;
 
         foreach (var fi in GetType().GetFields(flags))
+        {
+            var captured = fi;
             foreach (var attr in fi.GetCustomAttributes<DDXAttribute>(true))
-                list.Add(new DdxEntry(fi, attr, attr.ControlName));
+                list.Add(new DdxEntry(
+                    fi.Name, fi.FieldType, attr.ControlName, attr.ControlProperty,
+                    Getter:     () => captured.GetValue(this),
+                    Setter:     v  => captured.SetValue(this, v),
+                    Validators: fi.GetCustomAttributes<DDVAttribute>(true).ToArray()
+                ));
+        }
 
         foreach (var pi in GetType().GetProperties(flags))
+        {
+            var captured = pi;
             foreach (var attr in pi.GetCustomAttributes<DDXAttribute>(true))
-                list.Add(new DdxEntry(pi, attr, attr.ControlName));
+                list.Add(new DdxEntry(
+                    pi.Name, pi.PropertyType, attr.ControlName, attr.ControlProperty,
+                    Getter:     () => captured.GetValue(this),
+                    Setter:     v  => { if (captured.CanWrite) captured.SetValue(this, v); },
+                    Validators: pi.GetCustomAttributes<DDVAttribute>(true).ToArray()
+                ));
+        }
 
         return list;
     }
@@ -170,35 +198,12 @@ public abstract class MfcDocument
         return found.Length > 0 ? found[0] : null;
     }
 
-    private static Type GetMemberType(MemberInfo m) => m switch
-    {
-        FieldInfo fi    => fi.FieldType,
-        PropertyInfo pi => pi.PropertyType,
-        _ => throw new NotSupportedException()
-    };
-
-    private object? GetValue(MemberInfo m) => m switch
-    {
-        FieldInfo fi    => fi.GetValue(this),
-        PropertyInfo pi => pi.GetValue(this),
-        _ => null
-    };
-
-    private void SetValue(MemberInfo m, object value)
-    {
-        switch (m)
-        {
-            case FieldInfo fi:                                    fi.SetValue(this, value); break;
-            case PropertyInfo pi when pi.CanWrite: pi.SetValue(this, value); break;
-        }
-    }
-
     /// <summary>Debug: returns the list of DDX mappings.</summary>
     public IReadOnlyList<(string ControlName, string MemberName, Type MemberType)> GetDdxMappings()
     {
         if (_ddxEntries is null) return [];
         return _ddxEntries
-            .Select(e => (e.ControlName, e.Member.Name, GetMemberType(e.Member)))
+            .Select(e => (e.ControlName, e.MemberName, e.MemberType))
             .ToList();
     }
 
@@ -215,8 +220,8 @@ public abstract class MfcDocument
         {
             var ctrl    = FindControl(_view, e.ControlName);
             var ctrlVal = ctrl is null ? "—" : ControlDisplayValue(ctrl);
-            var docVal  = FormatValue(GetValue(e.Member));
-            result.Add((e.ControlName, e.Member.Name, ctrlVal, docVal, ctrlVal == docVal));
+            var docVal  = FormatValue(e.Getter());
+            result.Add((e.ControlName, e.MemberName, ctrlVal, docVal, ctrlVal == docVal));
         }
         return result;
     }

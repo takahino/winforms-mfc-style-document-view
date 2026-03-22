@@ -2,7 +2,7 @@
 
 **Languages:** [English](architecture.md) · [日本語](architecture.ja.md)
 
-A framework for porting MFC’s Document–View pattern to WinForms.
+A framework for porting MFC's Document–View pattern to WinForms.
 It replaces MFC `DoDataExchange` / `DDX_*` / `DDV_*` with declarative C# attributes on document fields and keeps logic in the document, minimizing the cost of porting MFC code.
 
 ---
@@ -21,10 +21,14 @@ WindowsFormsDocumentView/
 │   ├── ResourceIdResolver.cs    ← Reflection over resource.h-style constants
 │   ├── ControlValueConverter.cs ← Control ↔ CLR value conversion
 │   └── IMessageBoxService.cs    ← MessageBox abstraction (mockable in tests)
+├── DocumentView.Framework.Generator/  ← Roslyn Incremental Source Generator
+│   ├── DdxSourceGenerator.cs    ← IIncrementalGenerator entry point
+│   ├── DdxSymbolModel.cs        ← Data models collected from Roslyn symbols
+│   └── DdxEntryEmitter.cs       ← Source code generation logic
 ├── DocumentView.Sample/         ← Example app
 │   ├── ResourceId.cs            ← resource.h equivalent ([AutoId] numbering)
 │   ├── SampleWinApp.cs          ← MfcWinApp impl (main = SampleView)
-│   ├── SampleDocument.cs        ← Example CDocument-style class
+│   ├── SampleDocument.cs        ← Example CDocument-style class (partial)
 │   ├── SampleView.cs            ← Form (delegates events to document)
 │   └── SampleView.Designer.cs
 ├── DocumentView.Framework.Tests/ ← Framework unit tests
@@ -57,21 +61,26 @@ DocumentView.Framework
 │  + GetDdxMappings()             │
 │  + GetDdxState()                │
 │  ◇ DebugLog / DataUpdated       │
+│  # BuildEntries() : List<…>     │──→ virtual; overridden by generator
 │  ─ _view : Control?             │
-│  ─ _ddxEntries                  │──→ DDXAttribute / DDVAttribute
+│  ─ _ddxEntries                  │──→ List<DdxEntry> (delegate-based)
 └─────────────────────────────────┘
 
 DocumentView.Sample
 ┌──────────────────┐     has-a     ┌────────────────────────┐
 │  SampleView      │──────────────→│  SampleDocument        │
 │  : Form          │               │  : MfcDocument         │
-│                  │               │                        │
+│                  │               │  (partial)             │
 │  OnLoad          │               │  m_strName [DDX][DDV]  │
 │  btnOk_Click ────┼─ delegates ──→│  OnBtnOk()             │
 │  btnCancel_Click ┼─ delegates ──→│  OnBtnCancel()         │
 │  btnDebug_Click ─┼─ delegates ──→│  OnBtnDebug()          │
 │  btnShowGrid_Click┼─ delegates ──→│  OnBtnShowGrid()      │
 └──────────────────┘               └────────────────────────┘
+                                             ▲
+                                   [generated at compile time]
+                                   SampleDocument.DdxGenerated.g.cs
+                                   override BuildEntries() { return [ … ]; }
 ```
 
 ---
@@ -114,20 +123,60 @@ Core DDX/DDV engine. `[DDX]` / `[DDV*]` may be applied to **instance fields or p
 
 ```
 AttachView(Form view)
-  └─ Initialize _view and _ddxEntries (control names from [DDX(...)] etc.)
+  └─ Initialize _view and _ddxEntries via BuildEntries()
+
+BuildEntries() : List<DdxEntry>   ← protected virtual
+  · Default (reflection fallback): scans fields/properties with [DDX] / [DDV*]
+    and wraps GetValue/SetValue in Getter/Setter delegates
+  · Override (generated): direct field access — () => this.m_strName, etc.
 
 UpdateData(saveAndValidate: true)   ← UI → Document + DDV
-  1. DDX: copy each control value into the bound m_* field
-  2. DDV: run [DDV*] validators
-               → on failure: focus control + MessageBox + return false
+  1. DDX: entry.Setter(newVal) for each bound field
+  2. DDV: entry.Validators foreach → on failure: focus + MessageBox + return false
 
 UpdateData(saveAndValidate: false)  ← Document → UI
-  DDX only: push each m_* field to its control
+  DDX only: ControlValueConverter.SetValue(ctrl, entry.Getter(), …)
 ```
 
-Optional diagnostics: `DebugLog` and `DataUpdated` events; `GetDdxState()` compares each bound control with its document member (used by the sample’s debug grid).
+`DdxEntry` is a `protected record` holding the member name/type, control name, `Getter`, `Setter`, and pre-computed `Validators` list. No `MemberInfo` references remain in the hot path.
+
+Optional diagnostics: `DebugLog` and `DataUpdated` events; `GetDdxState()` compares each bound control with its document member (used by the sample's debug grid).
 
 `MfcDocument` has no parameterless constructor—pass `IMessageBoxService` from DI or tests (`protected MfcDocument(IMessageBoxService messageBoxService)`).
+
+### `DocumentView.Framework.Generator/`
+
+Roslyn Incremental Source Generator (`netstandard2.0`). Referenced as an Analyzer from consumer projects.
+
+**Trigger:** any `partial` class that (directly or indirectly) inherits `MfcDocument`.
+
+**Output:** `{ClassName}.DdxGenerated.g.cs` — a `partial class` that overrides `BuildEntries()` with a collection expression of `DdxEntry` objects using direct field/property access lambdas and reconstructed `DDV*` attribute instances.
+
+```csharp
+// generated example
+partial class SampleDocument
+{
+    protected override List<MfcDocument.DdxEntry> BuildEntries() =>
+    [
+        new MfcDocument.DdxEntry(
+            MemberName: "m_strName", MemberType: typeof(string),
+            ControlName: "IDC_EDIT_NAME", ControlProperty: null,
+            Getter: () => this.m_strName,
+            Setter: v  => this.m_strName = (string)v,
+            Validators: [ new DDVMaxCharsAttribute(30) ]),
+        // …
+    ];
+}
+```
+
+Non-`partial` classes continue to use the reflection-based `BuildEntries()` fallback — no breaking change.
+
+To reference the generator from a project:
+```xml
+<ProjectReference Include="..\DocumentView.Framework.Generator\DocumentView.Framework.Generator.csproj"
+                  OutputItemType="Analyzer"
+                  ReferenceOutputAssembly="false" />
+```
 
 ### `DDXAttribute.cs`
 
@@ -235,8 +284,10 @@ public static class ResourceId
 
 ### 2. Create the document
 
+Add `partial` to enable compile-time code generation (recommended). The class works without `partial` too — reflection fallback applies.
+
 ```csharp
-public class MyDocument : MfcDocument
+public partial class MyDocument : MfcDocument   // partial → generator eliminates reflection
 {
     public MyDocument(IMessageBoxService messageBoxService) : base(messageBoxService) { }
 
@@ -295,6 +346,17 @@ services.AddSingleton<MfcWinApp, MyWinApp>(); // CreateMainForm → GetRequiredS
 ```
 
 See `DocumentView.Sample/Program.cs` and `SampleWinApp.cs`.
+
+### 5. Add the Generator reference to the project
+
+```xml
+<!-- MyApp.csproj -->
+<ItemGroup>
+  <ProjectReference Include="..\DocumentView.Framework.Generator\DocumentView.Framework.Generator.csproj"
+                    OutputItemType="Analyzer"
+                    ReferenceOutputAssembly="false" />
+</ItemGroup>
+```
 
 **Rules:**
 - Add `static class Ctrl` on the view with `nameof` for each designer control used in DDX.

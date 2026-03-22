@@ -41,7 +41,7 @@ public class ItemRow : INotifyPropertyChanged
 /// Sample employee document.
 /// Add [DDX] + [DDV*] on m_* fields instead of hand-written DoDataExchange DDX_* / DDV_* lines.
 /// </summary>
-public class SampleDocument : MfcDocument
+public partial class SampleDocument : MfcDocument
 {
     public SampleDocument(IMessageBoxService messageBoxService) : base(messageBoxService) { }
 

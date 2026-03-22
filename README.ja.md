@@ -8,6 +8,7 @@
 
 - **`MfcDocument`** — `AttachView`、`UpdateData(true|false)` により、MFC の UI→ドキュメント保存・検証 / ドキュメント→UI 反映に相当する流れを実現
 - **宣言的バインディング** — `[DDX(...)]` と `[DDV*]` で、手書きのデータ交換コードを削減
+- **Roslyn Source Generator** — `partial` を付けた Document クラスに対してコンパイル時に `BuildEntries()` オーバーライドを生成し、ホットパスのリフレクションを直接フィールドアクセスに置き換え（`partial` を付けないクラスはリフレクション fallback のまま動作）
 - **`MfcWinApp`** — `CWinApp` / `InitInstance` とメッセージループに相当する `Run()` の入口
 - **`IMessageBoxService`** — `MessageBox` の抽象化（単体テストでモック注入可能）
 - **`ResourceId` + `[AutoId]`（任意）** — `resource.h` 風のコントロール ID を揃えたい場合に利用
@@ -23,6 +24,7 @@
 | パス | 役割 |
 |------|------|
 | `DocumentView.Framework/` | 再利用可能なフレームワーク本体（`MfcWinApp`、`MfcDocument`、DDX/DDV、変換など） |
+| `DocumentView.Framework.Generator/` | Roslyn Incremental Source Generator — `partial` な Document クラスに対してデリゲートベースの `BuildEntries()` を生成 |
 | `DocumentView.Sample/` | 使用例（DI、サンプル Document / Form） |
 | `DocumentView.Framework.Tests/` | フレームワークの単体テスト |
 | `DocumentView.Sample.Tests/` | サンプルの単体テスト |
@@ -49,8 +51,10 @@ dotnet run --project DocumentView.Sample/DocumentView.Sample.csproj
 
 `MfcDocument` は `IMessageBoxService` をコンストラクタで受け取ります（サンプルは `Microsoft.Extensions.DependencyInjection` で登録・注入）。ドキュメントのメンバーにアトリビュートを付け、`UpdateData` 呼び出しでコントロールとフィールドの間で値をやり取りします。
 
+`partial` を付けることで、Source Generator がコンパイル時に直接フィールドアクセスのコードを生成します（リフレクション不要）:
+
 ```csharp
-public class SampleDocument : MfcDocument
+public partial class SampleDocument : MfcDocument   // partial → Generator が BuildEntries() を生成
 {
     public SampleDocument(IMessageBoxService messageBoxService) : base(messageBoxService) { }
 
@@ -63,6 +67,8 @@ public class SampleDocument : MfcDocument
     public int m_nAge = 0;
 }
 ```
+
+`partial` を省略しても問題ありません。`MfcDocument.BuildEntries()` のリフレクション実装がそのまま fallback として動作します。
 
 グリッドやボタン処理を含む全体の流れは `DocumentView.Sample/SampleDocument.cs`、`SampleView.cs`、`Program.cs` を参照してください。
 
