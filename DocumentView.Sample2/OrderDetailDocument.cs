@@ -18,10 +18,26 @@ public partial class OrderDetailDocument : MfcDocument
     [DDX(OrderView.Ctrl.IDC_LABEL_TOTAL)]
     public string m_strTotal = "¥0";
 
+    /// <summary>フィールドを初期値に戻し、UI に反映する。</summary>
     public void Reset()
     {
         m_gridLines = new BindingList<OrderLine>();
         m_strTotal  = "¥0";
+        UpdateData(false);
+    }
+
+    /// <summary>DTO からフィールドを復元し、UI に反映する。</summary>
+    public void RestoreFrom(PurchaseOrderData d)
+    {
+        m_gridLines = new BindingList<OrderLine>(
+            d.Lines.Select(l => new OrderLine
+            {
+                ItemCode  = l.ItemCode,
+                ItemName  = l.ItemName,
+                Qty       = l.Qty,
+                UnitPrice = l.UnitPrice,
+            }).ToList());
+        UpdateData(false);
     }
 
     /// <summary>

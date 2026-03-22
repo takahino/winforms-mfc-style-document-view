@@ -114,14 +114,11 @@ public partial class OrderView : Form
     /// <summary>全Documentをリセットして新規発注を開始する。</summary>
     public void OnNew()
     {
+        // 各 Document が Reset() 内で自分のフィールド初期化 + UpdateData(false) を行う
         SupplierDoc.Reset();
         HeaderDoc  .Reset(GenerateOrderNo());
         DetailDoc  .Reset();
         DetailDoc  .SubscribeGridLines();
-
-        SupplierDoc.UpdateData(false);
-        HeaderDoc  .UpdateData(false);
-        DetailDoc  .UpdateData(false);
     }
 
     /// <summary>全DocumentのUI→Doc転送・DDV検証・JSON保存を行う。</summary>
@@ -187,10 +184,8 @@ public partial class OrderView : Form
             return;
         }
 
+        // 各 Document が RestoreFrom() 内で自分のフィールド復元 + UpdateData(false) を行う
         DetailDoc.SubscribeGridLines();
-        SupplierDoc.UpdateData(false);
-        HeaderDoc  .UpdateData(false);
-        DetailDoc  .UpdateData(false);
     }
 
     // ── Serialization ────────────────────────────────────────────────────────
@@ -221,27 +216,10 @@ public partial class OrderView : Form
 
     private void FromData(PurchaseOrderData d)
     {
-        SupplierDoc.m_strSupplierCode = d.SupplierCode;
-        SupplierDoc.m_strSupplierName = d.SupplierName;
-        SupplierDoc.m_strAddress      = d.Address;
-        SupplierDoc.m_strTel          = d.Tel;
-        SupplierDoc.m_strFax          = d.Fax;
-
-        HeaderDoc.m_strOrderNo      = d.OrderNo;
-        HeaderDoc.m_strOrderDate    = d.OrderDate;
-        HeaderDoc.m_strDeliveryDate = d.DeliveryDate;
-        HeaderDoc.m_nStatus         = d.Status;
-        HeaderDoc.m_bUrgent         = d.Urgent;
-        HeaderDoc.m_strMemo         = d.Memo;
-
-        DetailDoc.m_gridLines = new System.ComponentModel.BindingList<OrderLine>(
-            d.Lines.Select(l => new OrderLine
-            {
-                ItemCode  = l.ItemCode,
-                ItemName  = l.ItemName,
-                Qty       = l.Qty,
-                UnitPrice = l.UnitPrice,
-            }).ToList());
+        // 各 Document が自分のフィールド復元 + UpdateData(false) の責任を持つ
+        SupplierDoc.RestoreFrom(d);
+        HeaderDoc  .RestoreFrom(d);
+        DetailDoc  .RestoreFrom(d);
     }
 
     // ── Order number generation ──────────────────────────────────────────────

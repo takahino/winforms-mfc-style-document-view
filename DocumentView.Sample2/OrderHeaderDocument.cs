@@ -30,6 +30,7 @@ public partial class OrderHeaderDocument : MfcDocument
     [DDX(OrderView.Ctrl.IDC_EDIT_MEMO)]
     public string m_strMemo = string.Empty;
 
+    /// <summary>フィールドを初期値に戻し、UI に反映する。</summary>
     public void Reset(string orderNo)
     {
         m_strOrderNo      = orderNo;
@@ -38,6 +39,19 @@ public partial class OrderHeaderDocument : MfcDocument
         m_nStatus         = 0;
         m_bUrgent         = false;
         m_strMemo         = string.Empty;
+        UpdateData(false);
+    }
+
+    /// <summary>DTO からフィールドを復元し、UI に反映する。</summary>
+    public void RestoreFrom(PurchaseOrderData d)
+    {
+        m_strOrderNo      = d.OrderNo;
+        m_strOrderDate    = d.OrderDate;
+        m_strDeliveryDate = d.DeliveryDate;
+        m_nStatus         = d.Status;
+        m_bUrgent         = d.Urgent;
+        m_strMemo         = d.Memo;
+        UpdateData(false);
     }
 
     /// <summary>
