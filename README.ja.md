@@ -25,9 +25,11 @@
 |------|------|
 | `DocumentView.Framework/` | 再利用可能なフレームワーク本体（`MfcWinApp`、`MfcDocument`、DDX/DDV、変換など） |
 | `DocumentView.Framework.Generator/` | Roslyn Incremental Source Generator — `partial` な Document クラスに対してデリゲートベースの `BuildEntries()` を生成 |
-| `DocumentView.Sample/` | 使用例（DI、サンプル Document / Form） |
+| `DocumentView.Sample/` | サンプル 1 — 従業員情報アプリ（Document 1 つ） |
+| `DocumentView.Sample2/` | サンプル 2 — 発注管理アプリ（1 つの Form に 3 つの Document をアタッチ） |
 | `DocumentView.Framework.Tests/` | フレームワークの単体テスト |
-| `DocumentView.Sample.Tests/` | サンプルの単体テスト |
+| `DocumentView.Sample.Tests/` | サンプル 1 の単体テスト |
+| `DocumentView.Sample2.Tests/` | サンプル 2 の単体テスト |
 | `docs/architecture.md` | アーキテクチャ概要（英語） |
 | `docs/architecture.ja.md` | アーキテクチャ概要（日本語） |
 | `MFC/` | **参考用** — C# サンプルに対応する VC++ 6.0 風 MFC の構成例（そのままビルド保証なし） |
@@ -36,16 +38,27 @@
 
 ```bash
 dotnet build WindowsFormsDocumentView.slnx
+
+# サンプル 1 — 従業員情報
 dotnet run --project DocumentView.Sample/DocumentView.Sample.csproj
+
+# サンプル 2 — 発注管理
+dotnet run --project DocumentView.Sample2/DocumentView.Sample2.csproj
 ```
 
-サンプルは `Microsoft.Extensions.DependencyInjection` でサービスを登録し、`MfcWinApp` を解決して `Run()` します。
+各サンプルは `Microsoft.Extensions.DependencyInjection` でサービスを登録し、`MfcWinApp` を解決して `Run()` します。
 
 ## スクリーンショット
 
-サンプルの **Employee information** ウィンドウには、DDX のバインディング状態（コントロール ↔ ドキュメントのフィールド）や、`UpdateData` / 検証に関する操作ログを表示するデバッグパネルがあり、MFC 風ダイアログのデータ交換を追跡するイメージに近い確認ができます。
+**サンプル 1 — 従業員情報**
+
+DDX のバインディング状態（コントロール ↔ ドキュメントのフィールド）や、`UpdateData` / 検証に関する操作ログを表示するデバッグパネルがあり、MFC 風ダイアログのデータ交換を追跡するイメージに近い確認ができます。
 
 ![従業員情報サンプルと DDX デバッグパネル](docs/employee-information-sample.png)
+
+**サンプル 2 — 発注管理**
+
+MFC SDI アプリにおける **3 ダイアログ構成**（`IDD_SUPPLIER_INFO`、`IDD_ORDER_HEADER`、`IDD_ORDER_DETAIL`）を 1 つの WinForms ウィンドウへ移植した例です。独立した 3 つの `MfcDocument` サブクラスをすべて同一の `Form` にアタッチします。デバッグパネルは 3 つの Document の DDX 状態を統合して表示します。
 
 ## コード例（概念）
 
@@ -71,6 +84,8 @@ public partial class SampleDocument : MfcDocument   // partial → Generator が
 `partial` を省略しても問題ありません。`MfcDocument.BuildEntries()` のリフレクション実装がそのまま fallback として動作します。
 
 グリッドやボタン処理を含む全体の流れは `DocumentView.Sample/SampleDocument.cs`、`SampleView.cs`、`Program.cs` を参照してください。
+
+**複数 Document パターン**（サンプル 2）については [docs/architecture.ja.md](docs/architecture.ja.md#1-つの-form-に複数の-document-をアタッチする) を参照してください。
 
 ## ドキュメント
 

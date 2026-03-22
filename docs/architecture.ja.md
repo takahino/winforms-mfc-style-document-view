@@ -26,19 +26,31 @@ WindowsFormsDocumentView/
 │   ├── DdxSourceGenerator.cs    ← IIncrementalGenerator エントリポイント
 │   ├── DdxSymbolModel.cs        ← Roslyn シンボルから収集したデータモデル
 │   └── DdxEntryEmitter.cs       ← ソースコード生成ロジック
-├── DocumentView.Sample/         ← 使用例
+├── DocumentView.Sample/         ← サンプル 1：従業員情報（Document 1 つ）
 │   ├── ResourceId.cs            ← resource.h 相当（[AutoId] で自動採番）
 │   ├── SampleWinApp.cs          ← MfcWinApp 実装（メインは SampleView）
 │   ├── SampleDocument.cs        ← CDocument 派生クラスの移植例（partial）
 │   ├── SampleView.cs            ← Form（イベントを Document に委譲）
 │   └── SampleView.Designer.cs
+├── DocumentView.Sample2/        ← サンプル 2：発注管理（Document 3 つ）
+│   ├── ResourceId.cs            ← resource.h 相当（IDC_* 定数 13 個）
+│   ├── PurchaseOrderWinApp.cs   ← MfcWinApp 実装（メインは OrderView）
+│   ├── OrderLine.cs             ← 発注明細行（INotifyPropertyChanged）
+│   ├── SupplierDocument.cs      ← IDD_SUPPLIER_INFO 相当（partial）
+│   ├── OrderHeaderDocument.cs   ← IDD_ORDER_HEADER 相当（partial）
+│   ├── OrderDetailDocument.cs   ← IDD_ORDER_DETAIL 相当（partial）
+│   ├── OrderView.cs             ← Form（3 つの Document をアタッチ）
+│   └── OrderView.Designer.cs
 ├── DocumentView.Framework.Tests/ ← Framework 単体テスト
-└── DocumentView.Sample.Tests/    ← Sample 単体テスト
+├── DocumentView.Sample.Tests/    ← サンプル 1 の単体テスト
+└── DocumentView.Sample2.Tests/   ← サンプル 2 の単体テスト
 ```
 
 ---
 
 ## クラス図
+
+### サンプル 1 — 従業員情報
 
 ```
 DocumentView.Framework
@@ -82,6 +94,46 @@ DocumentView.Sample
                                    [コンパイル時に自動生成]
                                    SampleDocument.DdxGenerated.g.cs
                                    override BuildEntries() { return [ … ]; }
+```
+
+### サンプル 2 — 発注管理（1 つの Form に 3 Document をアタッチ）
+
+```
+DocumentView.Sample2
+┌──────────────────────────────────────────────────────────────┐
+│  OrderView : Form                                            │
+│                                                              │
+│  SupplierDoc ───────────────────→ SupplierDocument          │
+│  HeaderDoc   ───────────────────→ OrderHeaderDocument        │
+│  DetailDoc   ───────────────────→ OrderDetailDocument        │
+│                                                              │
+│  コンストラクタ:                                              │
+│    SupplierDoc.AttachView(this)  ← 3 つが同一 Form を共有   │
+│    HeaderDoc.AttachView(this)                                │
+│    DetailDoc.AttachView(this)                                │
+│    [3×] AttachResourceId(typeof(ResourceId))                 │
+│                                                              │
+│  OnNew() ──→ SupplierDoc.Reset()                            │
+│              HeaderDoc.Reset(orderNo)                        │
+│              DetailDoc.Reset() + SubscribeGridLines()        │
+│                                                              │
+│  OnBtnSave() ──→ [3×] UpdateData(true) + ValidateBusiness   │
+│  btnCancel_Click ──→ [3×] UpdateData(false)                 │
+└──────────────────────────────────────────────────────────────┘
+
+SupplierDocument     OrderHeaderDocument    OrderDetailDocument
+: MfcDocument        : MfcDocument          : MfcDocument
+(partial)            (partial)              (partial)
+─────────────────    ──────────────────     ─────────────────────
+m_strSupplierCode    m_strOrderNo           m_gridLines [DDX]
+m_strSupplierName    m_strOrderDate         m_strTotal  [DDX]
+m_strAddress         m_strDeliveryDate
+m_strTel             m_nStatus [DDX]        RecalculateTotal()
+m_strFax             m_bUrgent  [DDX]       SubscribeGridLines()
+                     m_strMemo  [DDX]
+Reset()              Reset(orderNo)         Reset()
+RestoreFrom(d)       RestoreFrom(d)         RestoreFrom(d)
+ValidateBusiness()   OnStatusChanged()
 ```
 
 ---
@@ -260,6 +312,66 @@ SampleView (Form)                          SampleDocument (MfcDocument)
 ```
 
 View は UI の初期化と委譲のみ。ビジネスロジックは一切持たない。
+
+---
+
+## 1 つの Form に複数の Document をアタッチする
+
+MFC アプリでは複数のダイアログを 1 つのウィンドウに組み合わせることがある。サンプル 2 はこのパターンの移植例で、かつてのダイアログごとに `MfcDocument` サブクラスを作り、3 つすべてを同一の `Form` にアタッチする。
+
+```csharp
+// OrderView コンストラクタ
+SupplierDoc.AttachView(this);   // 3 つが同一 Form を共有
+HeaderDoc  .AttachView(this);
+DetailDoc  .AttachView(this);
+
+// 各 Document が同じ ResourceId を参照（FindControl は子孫全体を検索）
+SupplierDoc.AttachResourceId(typeof(ResourceId));
+HeaderDoc  .AttachResourceId(typeof(ResourceId));
+DetailDoc  .AttachResourceId(typeof(ResourceId));
+```
+
+**主なルール:**
+
+- `FindControl` は内部で `searchAllChildren: true` を使用するため、`SplitContainer` や `GroupBox` の中にネストされたコントロールも正しく発見される。
+- 各 Document の `[DDX]` フィールドは、共有 `ResourceId` 内で一意である必要がある。3 つの Document はすべて同一の `ResourceId` 型を参照する。
+- コーディネーター（View）は保存時に各 Document の `UpdateData(true)` を順番に呼び出す。初期化・復元時の `UpdateData(false)` は各 Document が `Reset()` / `RestoreFrom()` の中で自己責任で呼び出す。
+
+### Reset / RestoreFrom パターン
+
+フィールドの初期化と UI への反映は Document 自身の責任とする：
+
+```csharp
+// SupplierDocument
+public void Reset()
+{
+    m_strSupplierCode = string.Empty;
+    // ... 他のフィールド ...
+    UpdateData(false);   // Document が自分で UI に反映
+}
+
+public void RestoreFrom(PurchaseOrderData d)
+{
+    m_strSupplierCode = d.SupplierCode;
+    // ...
+    UpdateData(false);   // Document が自分で UI に反映
+}
+```
+
+View 側の `OnNew()` と `FromData()` は、各 Document の `Reset()` / `RestoreFrom()` を呼ぶだけで、初期化目的の `UpdateData` は直接呼ばない。
+
+```csharp
+// OrderView
+public void OnNew()
+{
+    SupplierDoc.Reset();
+    HeaderDoc  .Reset(GenerateOrderNo());
+    DetailDoc  .Reset();
+    DetailDoc  .SubscribeGridLines();
+}
+```
+
+`UpdateData(true)` は保存時のみ View が呼び出す。複数 Document にまたがる検証順序の調整は View の責務である。
 
 ---
 

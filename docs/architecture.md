@@ -25,19 +25,31 @@ WindowsFormsDocumentView/
 │   ├── DdxSourceGenerator.cs    ← IIncrementalGenerator entry point
 │   ├── DdxSymbolModel.cs        ← Data models collected from Roslyn symbols
 │   └── DdxEntryEmitter.cs       ← Source code generation logic
-├── DocumentView.Sample/         ← Example app
+├── DocumentView.Sample/         ← Sample 1: Employee information (single Document)
 │   ├── ResourceId.cs            ← resource.h equivalent ([AutoId] numbering)
 │   ├── SampleWinApp.cs          ← MfcWinApp impl (main = SampleView)
 │   ├── SampleDocument.cs        ← Example CDocument-style class (partial)
 │   ├── SampleView.cs            ← Form (delegates events to document)
 │   └── SampleView.Designer.cs
+├── DocumentView.Sample2/        ← Sample 2: Purchase order management (3 Documents)
+│   ├── ResourceId.cs            ← resource.h equivalent (13 IDC_* constants)
+│   ├── PurchaseOrderWinApp.cs   ← MfcWinApp impl (main = OrderView)
+│   ├── OrderLine.cs             ← Order line row (INotifyPropertyChanged)
+│   ├── SupplierDocument.cs      ← IDD_SUPPLIER_INFO equivalent (partial)
+│   ├── OrderHeaderDocument.cs   ← IDD_ORDER_HEADER equivalent (partial)
+│   ├── OrderDetailDocument.cs   ← IDD_ORDER_DETAIL equivalent (partial)
+│   ├── OrderView.cs             ← Form (attaches all 3 documents)
+│   └── OrderView.Designer.cs
 ├── DocumentView.Framework.Tests/ ← Framework unit tests
-└── DocumentView.Sample.Tests/    ← Sample unit tests
+├── DocumentView.Sample.Tests/    ← Sample 1 unit tests
+└── DocumentView.Sample2.Tests/   ← Sample 2 unit tests
 ```
 
 ---
 
 ## Class diagram
+
+### Sample 1 — Employee information
 
 ```
 DocumentView.Framework
@@ -81,6 +93,46 @@ DocumentView.Sample
                                    [generated at compile time]
                                    SampleDocument.DdxGenerated.g.cs
                                    override BuildEntries() { return [ … ]; }
+```
+
+### Sample 2 — Purchase order management (3 Documents on one Form)
+
+```
+DocumentView.Sample2
+┌─────────────────────────────────────────────────────────────┐
+│  OrderView : Form                                           │
+│                                                             │
+│  SupplierDoc ──────────────────→ SupplierDocument          │
+│  HeaderDoc   ──────────────────→ OrderHeaderDocument        │
+│  DetailDoc   ──────────────────→ OrderDetailDocument        │
+│                                                             │
+│  constructor:                                               │
+│    SupplierDoc.AttachView(this)  ← all 3 share same Form   │
+│    HeaderDoc.AttachView(this)                               │
+│    DetailDoc.AttachView(this)                               │
+│    [3×] AttachResourceId(typeof(ResourceId))                │
+│                                                             │
+│  OnNew() ──→ SupplierDoc.Reset()                           │
+│              HeaderDoc.Reset(orderNo)                       │
+│              DetailDoc.Reset() + SubscribeGridLines()       │
+│                                                             │
+│  OnBtnSave() ──→ [3×] UpdateData(true) + ValidateBusiness  │
+│  btnCancel_Click ──→ [3×] UpdateData(false)                │
+└─────────────────────────────────────────────────────────────┘
+
+SupplierDocument     OrderHeaderDocument    OrderDetailDocument
+: MfcDocument        : MfcDocument          : MfcDocument
+(partial)            (partial)              (partial)
+─────────────────    ──────────────────     ─────────────────────
+m_strSupplierCode    m_strOrderNo           m_gridLines [DDX]
+m_strSupplierName    m_strOrderDate         m_strTotal  [DDX]
+m_strAddress         m_strDeliveryDate
+m_strTel             m_nStatus [DDX]        RecalculateTotal()
+m_strFax             m_bUrgent  [DDX]       SubscribeGridLines()
+                     m_strMemo  [DDX]
+Reset()              Reset(orderNo)         Reset()
+RestoreFrom(d)       RestoreFrom(d)         RestoreFrom(d)
+ValidateBusiness()   OnStatusChanged()
 ```
 
 ---
@@ -259,6 +311,66 @@ SampleView (Form)                          SampleDocument (MfcDocument)
 ```
 
 The view only initializes UI and delegates. It holds no business logic.
+
+---
+
+## Multiple Documents on one Form
+
+MFC applications sometimes combine several dialogs in a single window. Sample 2 shows how to port this pattern: each former dialog becomes a separate `MfcDocument` subclass, and all three are attached to the same `Form`.
+
+```csharp
+// OrderView constructor
+SupplierDoc.AttachView(this);   // all three share the same Form
+HeaderDoc  .AttachView(this);
+DetailDoc  .AttachView(this);
+
+// Each document maps its own fields; FindControl searches all children
+SupplierDoc.AttachResourceId(typeof(ResourceId));
+HeaderDoc  .AttachResourceId(typeof(ResourceId));
+DetailDoc  .AttachResourceId(typeof(ResourceId));
+```
+
+**Key rules:**
+
+- `FindControl` uses `searchAllChildren: true` internally, so controls nested inside `SplitContainer` panels or `GroupBox` are found correctly.
+- Each document's `[DDX]` field names must be unique within the shared `ResourceId`; all three documents reference the same `ResourceId` type.
+- The coordinator (view) calls `UpdateData(true)` on each document in sequence for save; each document calls `UpdateData(false)` on itself inside `Reset()` and `RestoreFrom()`.
+
+### Reset / RestoreFrom pattern
+
+Document methods own the responsibility for initialising their fields **and** pushing them to the UI:
+
+```csharp
+// SupplierDocument
+public void Reset()
+{
+    m_strSupplierCode = string.Empty;
+    // ... other fields ...
+    UpdateData(false);   // Document pushes to UI itself
+}
+
+public void RestoreFrom(PurchaseOrderData d)
+{
+    m_strSupplierCode = d.SupplierCode;
+    // ...
+    UpdateData(false);   // Document pushes to UI itself
+}
+```
+
+The view's `OnNew()` and `FromData()` simply call `Reset()` / `RestoreFrom()` on each document — they do not call `UpdateData` directly for initialization.
+
+```csharp
+// OrderView
+public void OnNew()
+{
+    SupplierDoc.Reset();
+    HeaderDoc  .Reset(GenerateOrderNo());
+    DetailDoc  .Reset();
+    DetailDoc  .SubscribeGridLines();
+}
+```
+
+`UpdateData(true)` remains the view's responsibility (called during save), because only the view coordinates cross-document validation order.
 
 ---
 
