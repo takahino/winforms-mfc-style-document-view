@@ -2,6 +2,8 @@
   <Project Path="DocumentView.Framework/DocumentView.Framework.csproj" />
   <Project Path="DocumentView.Framework.Generator/DocumentView.Framework.Generator.csproj" />
   <Project Path="DocumentView.Sample/DocumentView.Sample.csproj" />
+  <Project Path="DocumentView.Sample2/DocumentView.Sample2.csproj" />
   <Project Path="DocumentView.Framework.Tests/DocumentView.Framework.Tests.csproj" />
   <Project Path="DocumentView.Sample.Tests/DocumentView.Sample.Tests.csproj" />
+  <Project Path="DocumentView.Sample2.Tests/DocumentView.Sample2.Tests.csproj" />
 </Solution>
